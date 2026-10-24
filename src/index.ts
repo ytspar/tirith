@@ -16,12 +16,14 @@ program
   .requiredOption('--cmd <string>', 'the blocked command')
   .option('--reason <string>', 'why it was blocked', 'blocked by tirith policy check')
   .option('--suggest <string>', 'safer command to prefill the editor with')
+  .option('--log-path <string>', 'bypass log path shown in the why pane')
   .option('--emit <format>', 'decision format on stdout: json | zsh', 'json')
   .action((opts) =>
     blockCommand({
       cmd: opts.cmd,
       reason: opts.reason,
       suggest: opts.suggest,
+      logPath: opts.logPath,
       emit: opts.emit,
     }),
   );

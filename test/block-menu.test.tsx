@@ -60,18 +60,33 @@ describe('BlockMenu', () => {
     app.unmount();
   });
 
-  it('s is not offered without a suggestion', () => {
-    const { app } = setup();
-    expect(app.lastFrame()).not.toContain('(s)');
+  it('s is always offered; without a suggestion it asks tirith for one', async () => {
+    const { app, decisions } = setup();
+    expect(app.lastFrame()).toContain('(s)');
+    await press(app, 's');
+    expect(decisions).toEqual([{ action: 'suggest' }]);
     app.unmount();
   });
 
-  it('w toggles the why pane', async () => {
-    const { app } = setup();
+  it('w toggles the why pane, including the bypass log path', async () => {
+    const { app } = setup({ logPath: '/tmp/tirith-bypass.log' });
     await press(app, 'w');
-    expect(app.lastFrame()).toContain('bypass is appended to');
+    expect(app.lastFrame()).toContain('/tmp/tirith-bypass.log');
     await press(app, 'w');
-    expect(app.lastFrame()).not.toContain('bypass is appended to');
+    expect(app.lastFrame()).not.toContain('/tmp/tirith-bypass.log');
+    app.unmount();
+  });
+
+  it('renders a multi-line tirith report as the reason', () => {
+    const report = [
+      'tirith: BLOCKED',
+      '  [HIGH] blast_writes_system_path — destructive command targets a system path',
+      '    Fix: target a specific project path instead.',
+    ].join('\n');
+    const { app } = setup({ reason: report });
+    const frame = app.lastFrame() ?? '';
+    expect(frame).toContain('blast_writes_system_path');
+    expect(frame).toContain('Fix: target a specific project path instead.');
     app.unmount();
   });
 

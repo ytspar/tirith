@@ -7,6 +7,7 @@ export interface BlockOptions {
   cmd: string;
   reason: string;
   suggest?: string;
+  logPath?: string;
   emit: EmitFormat;
 }
 
@@ -17,6 +18,7 @@ export function blockCommand(opts: BlockOptions): void {
       command: opts.cmd,
       reason: opts.reason,
       suggestion: opts.suggest,
+      logPath: opts.logPath,
       onDecision: (d) => {
         decision = d;
       },

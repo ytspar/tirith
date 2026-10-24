@@ -10,9 +10,12 @@ import { theme } from './theme';
 
 export interface BlockMenuProps {
   command: string;
+  /** Multiline text from Tirith's own block report. */
   reason: string;
   /** Optional safer command suggested by policy / a prior review. */
   suggestion?: string;
+  /** Bypass log path, shown in the why pane. */
+  logPath?: string;
   onDecision: (decision: BlockDecision) => void;
 }
 
@@ -24,7 +27,7 @@ interface Action {
   key: string;
 }
 
-export function BlockMenu({ command, reason, suggestion, onDecision }: BlockMenuProps) {
+export function BlockMenu({ command, reason, suggestion, logPath, onDecision }: BlockMenuProps) {
   const { exit } = useApp();
   const [cursor, setCursor] = useState(0);
   const [showWhy, setShowWhy] = useState(false);
@@ -33,7 +36,11 @@ export function BlockMenu({ command, reason, suggestion, onDecision }: BlockMenu
   const actions: Action[] = [
     { id: 'proceed', label: 'proceed once — run this command, logged', key: 'p' },
     { id: 'edit', label: 'edit — change it in place', key: 'e' },
-    ...(suggestion ? [{ id: 'suggest' as const, label: 'use suggestion', key: 's' }] : []),
+    {
+      id: 'suggest',
+      label: suggestion ? 'use suggestion — adopt the safer command' : 'suggest — ask tirith for a fix',
+      key: 's',
+    },
     { id: 'why', label: showWhy ? 'why — hide the reason' : 'why — show the reason', key: 'w' },
     { id: 'ask-pi', label: 'ask Pi — propose a safe alternative', key: 'a' },
     { id: 'cancel', label: 'cancel — keep it in the buffer', key: 'q' },
@@ -52,7 +59,7 @@ export function BlockMenu({ command, reason, suggestion, onDecision }: BlockMenu
       case 'edit':
         return setDraft(command);
       case 'suggest':
-        return setDraft(suggestion ?? command);
+        return suggestion ? setDraft(suggestion) : decide({ action: 'suggest' });
       case 'why':
         return setShowWhy((v) => !v);
       case 'ask-pi':
@@ -114,9 +121,10 @@ export function BlockMenu({ command, reason, suggestion, onDecision }: BlockMenu
           <Box marginTop={1} flexDirection="column">
             <Text color={theme.info}>why</Text>
             <Text dimColor>
-              Tirith matched this command against a local policy (curl piped to a shell, destructive tools, or
-              similar). Every bypass is appended to ~/.local/share/dotfiles/tirith-bypass.log.
+              Tirith matched this command against a local policy and refused to run it. Policies cover curl
+              piped into a shell, destructive tools, and writes outside the project. Nothing has run yet.
             </Text>
+            {logPath && <Text dimColor>Bypasses are appended to {logPath}</Text>}
           </Box>
         )}
       </Box>

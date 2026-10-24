@@ -5,6 +5,7 @@
 export type BlockDecision =
   | { action: 'proceed' }
   | { action: 'edit'; command: string }
+  | { action: 'suggest' }
   | { action: 'ask-pi' }
   | { action: 'cancel' };
 
