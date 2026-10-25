@@ -226,6 +226,46 @@ enum ExecutionReceiptAction {
     },
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+enum MenuEmitArg {
+    Json,
+    Zsh,
+}
+
+impl From<MenuEmitArg> for cli::menu::MenuEmit {
+    fn from(value: MenuEmitArg) -> Self {
+        match value {
+            MenuEmitArg::Json => Self::Json,
+            MenuEmitArg::Zsh => Self::Zsh,
+        }
+    }
+}
+
+/// Interactive terminal menus (fork addition; the UI lives in `tui/`).
+#[derive(Subcommand)]
+enum MenuAction {
+    /// Ask what to do with a command the gate refused to run.
+    Block {
+        #[arg(long)]
+        cmd: String,
+        #[arg(long)]
+        reason: Option<String>,
+        #[arg(long)]
+        suggest: Option<String>,
+        #[arg(long)]
+        log_path: Option<String>,
+        #[arg(long, value_enum, default_value = "json")]
+        emit: MenuEmitArg,
+    },
+    /// Ask how to clear an execution receipt that can no longer be resolved.
+    Stuck {
+        #[arg(long)]
+        cwd: String,
+        #[arg(long, value_enum, default_value = "json")]
+        emit: MenuEmitArg,
+    },
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Internal one-shot shell execution receipt protocol.
@@ -233,6 +273,12 @@ enum Commands {
     ExecutionReceiptInternal {
         #[command(subcommand)]
         action: ExecutionReceiptAction,
+    },
+
+    /// Launch the interactive terminal menu (fork; drives the Ink UI in `tui/`).
+    Menu {
+        #[command(subcommand)]
+        action: MenuAction,
     },
 
     /// Manage the tirith background daemon
@@ -7754,6 +7800,25 @@ fn run() {
     cli::init_quiet(cli.quiet);
 
     let exit_code = match cli.command {
+        Commands::Menu { action } => match action {
+            MenuAction::Block {
+                cmd,
+                reason,
+                suggest,
+                log_path,
+                emit,
+            } => cli::menu::run_menu(cli::menu::MenuRequest::Block {
+                command: cmd,
+                reason,
+                suggestion: suggest,
+                log_path,
+                emit: emit.into(),
+            }),
+            MenuAction::Stuck { cwd, emit } => cli::menu::run_menu(cli::menu::MenuRequest::Stuck {
+                cwd,
+                emit: emit.into(),
+            }),
+        },
         Commands::ExecutionReceiptInternal { action } => match action {
             ExecutionReceiptAction::Capability => cli::check::receipt_capability(),
             ExecutionReceiptAction::Register {

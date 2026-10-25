@@ -1676,6 +1676,7 @@ pub mod lsp;
 pub mod manpage;
 pub mod mcp;
 pub mod mcp_server;
+pub mod menu;
 /// `tirith pkg attest-npm` (C17): resolve the operator's own npm through the
 /// trusted-child mechanism, discover its exact version, and run ONLY the argv a
 /// closed, fixture-backed contract table authorizes for that version, binding
