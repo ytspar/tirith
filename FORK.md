@@ -64,14 +64,17 @@ under the repo's AGPL-3.0 terms**, while the standalone repo keeps its MIT licen
 If that ever becomes a problem, move `tui/` back out of tree and drive the menu
 purely as an external binary.
 
-## Editing the TUI here
+## Editing the TUI
 
-`tui/` is a subtree, so edits made in this repo belong in `tui/`, and the standalone
-repo is the mirror:
+`tui/` is a subtree of [ytspar/tirith-menu](https://github.com/ytspar/tirith-menu),
+and that repo stays canonical: it has its own tests, build and releases, and it is
+the thing an installed `tirith-menu` comes from. Work on the UI there, then pull it
+in here:
 
 ```sh
-git subtree push --prefix=tui git@github.com:ytspar/tirith-menu.git main
+git subtree pull --prefix=tui ../tirith-menu main -m "Pull the tui"
 ```
 
-Pulling a change made in the standalone repo is `git subtree pull --prefix=tui
-<path-or-url> main`.
+Changes that need the fork binary itself (e.g. new arguments for `tirith menu block`)
+get made on both sides: the Rust launcher in `crates/tirith/src/cli/menu.rs` forwards
+arguments verbatim, so keep the two CLIs in step.
