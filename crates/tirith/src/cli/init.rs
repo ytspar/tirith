@@ -507,34 +507,45 @@ pub fn find_hook_dir() -> Option<PathBuf> {
         }
     }
 
+    // A bundle under `~/.local/share/tirith/shell` is not a packaged install:
+    // it is the copy this binary materialized next to its own data dir, which
+    // then happens to look like the Homebrew layout for a `~/.local/bin`
+    // install. Trusting it blindly pins the hooks to whichever build wrote them
+    // first, so an upgraded binary keeps sourcing stale hooks forever. Skip it
+    // here and let the content-checked materialization below refresh it.
+    let materialized = tirith_core::policy::data_dir().map(|dir| dir.join("shell"));
+
     if let Ok(exe) = std::env::current_exe() {
         if let Some(bin_dir) = exe.parent() {
-            let brew_dir = bin_dir.join("../share/tirith/shell");
-            if brew_dir.join("lib").exists() {
-                return Some(brew_dir.canonicalize().unwrap_or(brew_dir));
-            }
-
+            let mut candidates = vec![bin_dir.join("../share/tirith/shell")];
             #[cfg(unix)]
-            {
-                let sys_dir = PathBuf::from("/usr/share/tirith/shell");
-                if sys_dir.join("lib").exists() {
-                    return Some(sys_dir);
+            candidates.push(PathBuf::from("/usr/share/tirith/shell"));
+            candidates.push(bin_dir.join("../shell"));
+            candidates.push(bin_dir.join("../../shell"));
+
+            for candidate in candidates {
+                if !candidate.join("lib").exists() {
+                    continue;
                 }
-            }
-
-            let cargo_dir = bin_dir.join("../shell");
-            if cargo_dir.join("lib").exists() {
-                return Some(cargo_dir.canonicalize().unwrap_or(cargo_dir));
-            }
-
-            let dev_dir = bin_dir.join("../../shell");
-            if dev_dir.join("lib").exists() {
-                return Some(dev_dir.canonicalize().unwrap_or(dev_dir));
+                if materialized
+                    .as_ref()
+                    .is_some_and(|materialized| same_directory(materialized, &candidate))
+                {
+                    continue;
+                }
+                return Some(candidate.canonicalize().unwrap_or(candidate));
             }
         }
     }
 
     materialize_hooks()
+}
+
+/// Compare two paths after resolving them as far as the filesystem allows; the
+/// hook search builds `..`-containing paths by joining onto the executable dir.
+fn same_directory(left: &Path, right: &Path) -> bool {
+    let resolve = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    resolve(left) == resolve(right)
 }
 
 /// Find the shell hooks directory without materializing (read-only variant for diagnostics).

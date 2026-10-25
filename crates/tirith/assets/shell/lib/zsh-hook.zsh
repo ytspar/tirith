@@ -335,6 +335,150 @@ if (( $+widgets[accept-line] )); then
   zle -A accept-line _tirith_original_accept_line
 fi
 
+# ── interactive menus (fork addition) ───────────────────────────────────────
+# A blocked command is usually the start of a decision, not the end of one, so
+# instead of dead-ending at the report we hand the decision to the Ink menu in
+# tui/ (reached through `tirith menu`, which resolves the menu binary). These
+# menus are UI only: the hook keeps ownership of the receipt protocol, $BUFFER
+# and the bypass log.
+#
+#   TIRITH_INTERACTIVE_MENU=1   enable the menus (default: report and block)
+#   TIRITH_MENU_ASK_CMD='...'   shell snippet run for the "ask an AI" action.
+#                               The blocked command is its `$1`; without it the
+#                               action is hidden.
+#   TIRITH_BYPASS_LOG=<path>    where `proceed`/`forget` decisions are recorded
+_TIRITH_MENU_PROBE=-1
+
+_tirith_bypass_log_path() {
+  print -r -- "${TIRITH_BYPASS_LOG:-${XDG_STATE_HOME:-$HOME/.local/state}/tirith/bypass.log}"
+}
+
+_tirith_bypass_log() {
+  local log
+  log="$(_tirith_bypass_log_path)"
+  [[ -d "${log:h}" ]] || command mkdir -p -- "${log:h}" 2>/dev/null || return 0
+  print -r -- "$(command date -u +%FT%TZ 2>/dev/null) pid=$$ ${TIRITH_SESSION_ID:-nosession}: $1" \
+    >>"$log" 2>/dev/null || :
+}
+
+# Run the configured reviewer snippet with the blocked command as `$1`.
+_tirith_menu_ask() {
+  local snippet="${TIRITH_MENU_ASK_CMD:-}"
+  [[ -n "$snippet" ]] || return 1
+  set -- "$1"
+  eval "$snippet"
+}
+
+_tirith_menu_available() {
+  [[ -o interactive ]] || return 1
+  [[ "${TIRITH_INTERACTIVE_MENU:-0}" == "1" ]] || return 1
+  [[ -r /dev/tty ]] || return 1
+  if [[ $_TIRITH_MENU_PROBE -lt 0 ]]; then
+    if command "$_TIRITH_BIN" menu --help >/dev/null 2>&1; then
+      _TIRITH_MENU_PROBE=1
+    else
+      _TIRITH_MENU_PROBE=0
+    fi
+  fi
+  [[ $_TIRITH_MENU_PROBE -eq 1 ]]
+}
+
+# Ask the menu about a blocked command and apply its decision. Returns 0 when
+# the block has been handled (the caller must stop), 1 when the menu could not
+# run so the caller falls back to printing the report.
+_tirith_block_menu() {
+  local buf="$1" report="$2"
+  local decision="" action="" command="" out=""
+  local -a menu_args
+  local -i rounds=0
+  while (( rounds++ < 3 )); do
+    menu_args=(block --cmd "$buf" --reason "$report" --log-path "$(_tirith_bypass_log_path)" --emit zsh)
+    [[ -n "${TIRITH_MENU_ASK_CMD:-}" ]] || menu_args+=(--no-ask)
+    zle -I
+    decision="$(command "$_TIRITH_BIN" menu "${menu_args[@]}" 2>/dev/null)"
+    [[ -n "$decision" ]] || return 1
+    action="" command=""
+    eval "$decision"
+    case "$action" in
+      proceed)
+        _tirith_bypass_log "$buf"
+        zle -I
+        _tirith_output "tirith: proceeding once (bypass logged to $(_tirith_bypass_log_path))"
+        BUFFER="$buf"
+        CURSOR=${#BUFFER}
+        zle .accept-line
+        return 0
+        ;;
+      edit)
+        BUFFER="${command:-$buf}"
+        CURSOR=${#BUFFER}
+        zle redisplay
+        return 0
+        ;;
+      suggest)
+        zle -I
+        _tirith_output "tirith: asking for a safer command (this takes a few seconds)"
+        out="$(command "$_TIRITH_BIN" check --suggest --non-interactive --shell posix -- "$buf" 2>&1)"
+        [[ -n "$out" ]] && print -r -- "$out" \
+          | command sed $'s/\033\\[[0-9;?]*[a-zA-Z]//g' 2>/dev/null | head -30 >&2
+        ;;
+      ask-pi)
+        zle -I
+        _tirith_menu_ask "$buf"
+        BUFFER="$buf"
+        CURSOR=${#BUFFER}
+        zle redisplay
+        return 0
+        ;;
+      *)
+        BUFFER="$buf"
+        CURSOR=${#BUFFER}
+        zle redisplay
+        return 0
+        ;;
+    esac
+  done
+  return 0
+}
+
+# The receipt guard refuses every command while an older receipt is unresolved
+# (including a receipt whose original directory is gone, which can never be
+# reconciled). Offer the way out instead of leaving the user stuck.
+_tirith_stuck_menu() {
+  local decision="" action=""
+  zle -I
+  decision="$(command "$_TIRITH_BIN" menu stuck --cwd "${_TIRITH_UNRESOLVED_RECEIPT_CWD:-unknown}" \
+    --emit zsh 2>/dev/null)"
+  [[ -n "$decision" ]] || return 1
+  action=""
+  eval "$decision"
+  case "$action" in
+    retry)
+      if _tirith_unresolved_receipt_cleanup; then
+        zle -I
+        _tirith_output "tirith: receipt resolved — running a fresh check"
+        _tirith_accept_line
+        return 0
+      fi
+      zle -I
+      _tirith_output "tirith: the receipt is still unresolvable"
+      return 0
+      ;;
+    forget)
+      _tirith_bypass_log "stuck-receipt-forgot cwd=${_TIRITH_UNRESOLVED_RECEIPT_CWD:-unknown}"
+      unset _TIRITH_UNRESOLVED_RECEIPT _TIRITH_UNRESOLVED_RECEIPT_CWD
+      zle -I
+      _tirith_output "tirith: stuck receipt forgotten (logged) — running a fresh check"
+      _tirith_accept_line
+      return 0
+      ;;
+    *)
+      zle redisplay
+      return 0
+      ;;
+  esac
+}
+
 _tirith_accept_line() {
   setopt localoptions clobber   # mktemp + redirect needs clobber
   local buf="$BUFFER"
@@ -343,6 +487,9 @@ _tirith_accept_line() {
   # unresolved. Reconciliation/discard runs in the original working directory.
   if [[ $_TIRITH_RECEIPT_PROTOCOL -eq 3 ]] \
      && ! _tirith_unresolved_receipt_cleanup; then
+    if _tirith_menu_available && _tirith_stuck_menu; then
+      return
+    fi
     _tirith_output "tirith: execution receipt remains unresolved; command not accepted"
     return
   fi
@@ -457,6 +604,9 @@ _tirith_accept_line() {
     if [[ $rc -eq 1 && "$stdout_bytes" == "0" ]]; then
       _tirith_v3_remove_capture_files "$outfile" "$errfile" >/dev/null 2>&1
       local v3_blocked_buf=$(_tirith_escape_preview "$buf")
+      if _tirith_menu_available && _tirith_block_menu "$buf" "$output"; then
+        return
+      fi
       _tirith_output ""
       _tirith_output "command> $v3_blocked_buf"
       [[ -n "$output" ]] && _tirith_output "$output"
@@ -559,12 +709,18 @@ _tirith_accept_line() {
     elif [[ $rc -eq 1 ]]; then
       # Approval not required but command was blocked: honor block
       [[ -n "$warn_ack_path" ]] && _tirith_v3_remove_capture_files "$warn_ack_path" >/dev/null 2>&1
+      if _tirith_menu_available && _tirith_block_menu "$buf" "$output"; then
+        return
+      fi
       BUFFER=""
       zle send-break
       return
     fi
   elif [[ $rc -eq 1 ]]; then
     # No approval file: honor block
+    if _tirith_menu_available && _tirith_block_menu "$buf" "$output"; then
+      return
+    fi
     BUFFER=""
     zle send-break
     return
@@ -642,6 +798,12 @@ _tirith_bracketed_paste() {
       BUFFER="$old_buffer"
       CURSOR=$old_cursor
       local escaped_paste=$(_tirith_escape_preview "$pasted")
+      # Offer the menu on the reverted line, as the Enter path does. A paste into
+      # an empty line leaves nothing to act on, so keep the plain report there.
+      if [[ $rc -eq 1 && -n "$old_buffer" ]] \
+         && _tirith_menu_available && _tirith_block_menu "$old_buffer" "$output"; then
+        return
+      fi
       _tirith_output ""
       _tirith_output "paste> $escaped_paste"
       [[ -n "$output" ]] && _tirith_output "$output"
