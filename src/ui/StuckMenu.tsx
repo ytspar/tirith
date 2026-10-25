@@ -5,6 +5,8 @@
 import { Box, useApp, useInput } from 'ink';
 import { useState } from 'react';
 import type { StuckDecision } from '../decision';
+import { ActionRow, Header, Hint, Panel } from './chrome';
+import { useLayoutWidth } from './layout';
 import { Text } from './Text';
 import { theme } from './theme';
 
@@ -14,14 +16,22 @@ export interface StuckMenuProps {
   onDecision: (decision: StuckDecision) => void;
 }
 
-const ACTIONS = [
-  { id: 'retry', label: 'retry resolution', key: 'r' },
-  { id: 'forget', label: 'forget stuck receipt, recheck this command (logged)', key: 'f' },
-  { id: 'quit', label: 'keep blocked', key: 'q' },
-] as const;
+interface StuckAction {
+  id: StuckDecision['action'];
+  label: string;
+  hotkey: string;
+  aliases?: string[];
+}
+
+const ACTIONS: StuckAction[] = [
+  { id: 'retry', label: 'retry resolution', hotkey: 'r' },
+  { id: 'forget', label: 'forget the stuck receipt and recheck this command', hotkey: 'f' },
+  { id: 'quit', label: 'stay blocked', hotkey: 'esc', aliases: ['q'] },
+];
 
 export function StuckMenu({ cwd, onDecision }: StuckMenuProps) {
   const { exit } = useApp();
+  const width = useLayoutWidth();
   const [cursor, setCursor] = useState(0);
   const active = Math.min(cursor, ACTIONS.length - 1);
 
@@ -35,39 +45,35 @@ export function StuckMenu({ cwd, onDecision }: StuckMenuProps) {
     if (key.return) return decide({ action: ACTIONS[active].id });
     if (key.upArrow) return setCursor((c) => Math.max(0, c - 1));
     if (key.downArrow) return setCursor((c) => Math.min(ACTIONS.length - 1, c + 1));
-    const byKey = ACTIONS.find((a) => a.key === input.toLowerCase());
+    const needle = input.toLowerCase();
+    const byKey = ACTIONS.find((a) => a.hotkey === needle || a.aliases?.includes(needle));
     if (byKey) return decide({ action: byKey.id });
   });
 
   return (
-    <Box flexDirection="column">
-      <Box marginBottom={1}>
-        <Text bold color={theme.brand}>
-          tirith
+    <Box flexDirection="column" width={width}>
+      <Header glyph="!" tone={theme.warning} badge="stuck execution receipt" />
+      <Panel width={width}>
+        <Text wrap="wrap">
+          A previous execution receipt could not be resolved, so tirith refuses to run anything until it is
+          cleared.
         </Text>
-        <Text dimColor> stuck execution receipt</Text>
-      </Box>
-      <Box borderStyle="round" borderColor={theme.danger} flexDirection="column">
-        <Text>A previous execution receipt could not be resolved, so tirith is</Text>
-        <Text>refusing every command until it is cleared.</Text>
         <Box marginTop={1}>
-          <Text dimColor>receipt cwd: </Text>
-          <Text color={theme.warning}>{cwd}</Text>
+          <Text dimColor>{'receipt cwd  '}</Text>
+          <Text color={theme.warning} wrap="truncate-end">
+            {cwd}
+          </Text>
         </Box>
-        <Text dimColor>(that directory is likely gone, so every reconcile fails)</Text>
-      </Box>
-      <Box flexDirection="column" marginTop={1}>
+        <Text dimColor wrap="wrap">
+          that directory is gone, so every reconcile keeps failing
+        </Text>
+      </Panel>
+      <Box flexDirection="column" marginTop={1} width={width}>
         {ACTIONS.map((a, i) => (
-          <Box key={a.id}>
-            <Text color={i === active ? theme.brand : theme.muted}>{i === active ? '▏' : ' '}</Text>
-            <Text color={i === active ? theme.text : undefined} wrap="truncate-end">
-              {` ${a.label} `}
-            </Text>
-            <Text dimColor>({a.key})</Text>
-          </Box>
+          <ActionRow key={a.id} selected={i === active} label={a.label} hotkey={a.hotkey} width={width} />
         ))}
       </Box>
-      <Text dimColor>↑/↓ or letter · enter to choose</Text>
+      <Hint width={width}>{'[↑↓] move · [enter] select · [letters] shortcuts'}</Hint>
     </Box>
   );
 }
