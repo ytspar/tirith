@@ -798,10 +798,11 @@ _tirith_bracketed_paste() {
       BUFFER="$old_buffer"
       CURSOR=$old_cursor
       local escaped_paste=$(_tirith_escape_preview "$pasted")
-      # Offer the menu on the reverted line, as the Enter path does. A paste into
-      # an empty line leaves nothing to act on, so keep the plain report there.
-      if [[ $rc -eq 1 && -n "$old_buffer" ]] \
-         && _tirith_menu_available && _tirith_block_menu "$old_buffer" "$output"; then
+      # Offer the menu on what the user would have submitted (the pasted text on
+      # top of whatever was already typed), the same way the Enter path does.
+      local menu_buffer="$new_buffer"
+      if [[ $rc -eq 1 && -n "$menu_buffer" ]] \
+         && _tirith_menu_available && _tirith_block_menu "$menu_buffer" "$output"; then
         return
       fi
       _tirith_output ""
