@@ -36,10 +36,17 @@ describe('BlockMenu', () => {
     }
   });
 
-  it('a asks Pi', async () => {
+  it('a asks the AI reviewer', async () => {
     const { app, decisions } = setup();
     await press(app, 'a');
     expect(decisions).toEqual([{ action: 'ask-pi' }]);
+    app.unmount();
+  });
+
+  it('hides the AI handoff when the caller has no reviewer', () => {
+    const { app } = setup({ ask: false });
+    expect(app.lastFrame()).not.toContain('[a]');
+    expect(app.lastFrame()).toContain('[p]');
     app.unmount();
   });
 

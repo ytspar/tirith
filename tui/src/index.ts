@@ -17,6 +17,7 @@ program
   .option('--reason <string>', 'why it was blocked', 'blocked by tirith policy check')
   .option('--suggest <string>', 'safer command to prefill the editor with')
   .option('--log-path <string>', 'bypass log path shown in the why pane')
+  .option('--no-ask', 'hide the "ask an AI" action (no reviewer is wired up)')
   .option('--emit <format>', 'decision format on stdout: json | zsh', 'json')
   .action((opts) =>
     blockCommand({
@@ -24,6 +25,7 @@ program
       reason: opts.reason,
       suggest: opts.suggest,
       logPath: opts.logPath,
+      ask: opts.ask !== false,
       emit: opts.emit,
     }),
   );
