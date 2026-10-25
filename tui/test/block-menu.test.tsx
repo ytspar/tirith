@@ -62,9 +62,37 @@ describe('BlockMenu', () => {
 
   it('s is always offered; without a suggestion it asks tirith for one', async () => {
     const { app, decisions } = setup();
-    expect(app.lastFrame()).toContain('(s)');
+    expect(app.lastFrame()).toContain('[s]');
     await press(app, 's');
     expect(decisions).toEqual([{ action: 'suggest' }]);
+    app.unmount();
+  });
+
+  it('renders a header, right-aligned key caps and a hint footer', () => {
+    const { app } = setup();
+    const frame = app.lastFrame() ?? '';
+    expect(frame).toContain('command blocked');
+    // Key caps sit in a right-hand column, so they line up with each other.
+    const caps = frame
+      .split('\n')
+      .map((l) => l.match(/\[(p|e|s|w|a|esc)\]$/)?.[0])
+      .filter(Boolean);
+    expect(caps).toEqual(['[p]', '[e]', '[s]', '[w]', '[a]', '[esc]']);
+    expect(frame).toContain('[↑↓] move');
+    app.unmount();
+  });
+
+  it('drops the report banner and collapses long reports behind w', async () => {
+    const long = ['tirith: BLOCKED', ...Array.from({ length: 12 }, (_, i) => `finding ${i}`)].join('\n');
+    const { app } = setup({ reason: long });
+    let frame = app.lastFrame() ?? '';
+    expect(frame).not.toContain('tirith: BLOCKED');
+    expect(frame).toContain('finding 0');
+    expect(frame).not.toContain('finding 9');
+    expect(frame).toMatch(/4 more lines, \[w\] for the full report/);
+    await press(app, 'w');
+    frame = app.lastFrame() ?? '';
+    expect(frame).toContain('finding 11');
     app.unmount();
   });
 
