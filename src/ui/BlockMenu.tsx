@@ -19,6 +19,8 @@ export interface BlockMenuProps {
   suggestion?: string;
   /** Bypass log path, shown in the why pane. */
   logPath?: string;
+  /** Offer the "ask an AI" handoff; false when the caller has no reviewer. */
+  ask?: boolean;
   onDecision: (decision: BlockDecision) => void;
 }
 
@@ -51,7 +53,7 @@ export function reportLines(reason: string): string[] {
   return Number.isFinite(indent) ? all.map((line) => line.slice(indent)) : all;
 }
 
-export function BlockMenu({ command, reason, suggestion, logPath, onDecision }: BlockMenuProps) {
+export function BlockMenu({ command, reason, suggestion, logPath, ask = true, onDecision }: BlockMenuProps) {
   const { exit } = useApp();
   const width = useLayoutWidth();
   const [cursor, setCursor] = useState(0);
@@ -67,7 +69,7 @@ export function BlockMenu({ command, reason, suggestion, logPath, onDecision }: 
       hotkey: 's',
     },
     { id: 'why', label: showWhy ? 'hide why' : 'why was this blocked', hotkey: 'w' },
-    { id: 'ask-pi', label: 'ask pi for an alternative', hotkey: 'a' },
+    ...(ask ? [{ id: 'ask-pi' as const, label: 'ask an AI for an alternative', hotkey: 'a' }] : []),
     { id: 'cancel', label: 'cancel, keep it in the buffer', hotkey: 'esc', aliases: ['q'] },
   ];
   const active = Math.min(cursor, actions.length - 1);

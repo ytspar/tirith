@@ -8,6 +8,8 @@ export interface BlockOptions {
   reason: string;
   suggest?: string;
   logPath?: string;
+  /** False when the caller cannot hand off to a reviewer, so hide the action. */
+  ask?: boolean;
   emit: EmitFormat;
 }
 
@@ -19,6 +21,7 @@ export function blockCommand(opts: BlockOptions): void {
       reason: opts.reason,
       suggestion: opts.suggest,
       logPath: opts.logPath,
+      ask: opts.ask !== false,
       onDecision: (d) => {
         decision = d;
       },
