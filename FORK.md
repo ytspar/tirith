@@ -32,6 +32,29 @@ fit together.
 2. **`tui/`** — the Ink menu binary (`tirith-menu`), imported from
    [ytspar/tirith-menu](https://github.com/ytspar/tirith-menu) with `git subtree`, so
    the terminal UI and the gate it presents evolve in one repo.
+3. **`tirith menu block|stuck`** (`crates/tirith/src/cli/menu.rs`) — a launcher that
+   resolves the menu (`TIRITH_MENU_BIN`, then a sibling `tirith-menu`, then `PATH`),
+   forwards its arguments, inherits the terminal and returns its exit code, so shell
+   glue never has to know about a second binary.
+4. **Menus in the zsh hook** — `TIRITH_INTERACTIVE_MENU=1` makes a blocked Enter or
+   paste (and the unresolved-receipt guard) ask the menu and apply the answer, with
+   `TIRITH_MENU_ASK_CMD` wiring the "ask an AI" action to a reviewer snippet and
+   `TIRITH_BYPASS_LOG` recording `proceed`/`forget`. Off by default: stock behaviour
+   is unchanged for anyone who does not opt in. Tested without a terminal by
+   `shell/test/zsh-hook-menu.zsh` (fake `tirith`, real decision handling).
+5. **Stale hook bundles refresh themselves** (`cli/init.rs`) — a bundle under
+   `~/.local/share/tirith/shell` is our own materialized copy, not a packaged install,
+   so `find_hook_dir` no longer lets an older build's copy shadow the hooks the
+   current binary ships.
+
+Verification before pushing (the first two need no terminal):
+
+```sh
+zsh shell/test/zsh-hook-menu.zsh                     # hook menu decisions
+cargo test -p tirith --test shell_conformance        # hook contract (menus off)
+cargo test -p tirith --test cli_integration shell_execution_receipt_registration
+cd tui && pnpm test && pnpm build
+```
 
 Upstream keeps its dev shell hooks in `shell/lib/` and byte-identical copies in
 `crates/tirith/assets/shell/lib/` (embedded with `include_str!`). Keep those in step:
@@ -57,6 +80,12 @@ the current upstream, not to a stale base.
 cargo build --release -p tirith          # Rust binary
 cd tui && pnpm install && pnpm build     # Ink menu binary (dist/index.js)
 ```
+
+`scripts/install-local.sh` does both and installs into `~/.local/bin` (override with
+`PREFIX`): the release binary plus a `tirith-menu` symlink to `tui/dist/index.js`,
+which `tirith menu` finds as a sibling of the executable. `~/.local/bin` usually
+precedes `/opt/homebrew/bin`, so the fork becomes the active `tirith` while the
+Homebrew copy stays available as a fallback.
 
 The fork is AGPL-3.0-only (see `LICENSE-AGPL`), like upstream. `tui/` is our own code,
 originally MIT in the standalone repo; **the copy inside this repo is distributed
